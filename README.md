@@ -1,12 +1,15 @@
 # API Error Response
 
-A TypeScript-based contract for standardized API error and success responses. Provides discriminated union types that make it easy to handle both success and error cases with full type safety.
+A standardized contract for API error and success responses, available in **TypeScript** and **Go**. Provides type-safe structures that make it easy to handle both success and error cases with full type safety.
 
 ## Table of Contents
 
 - [Overview](#overview)
 - [The Problem](#the-problem)
 - [The Solution](#the-solution)
+- [Language Support](#language-support)
+  - [TypeScript](#typescript)
+  - [Go](#go)
 - [Type Definitions](#type-definitions)
   - [ApiResponse](#apiresponse)
   - [ApiError](#apierror)
@@ -15,21 +18,22 @@ A TypeScript-based contract for standardized API error and success responses. Pr
   - [ErrorType](#errortype)
   - [ErrorCode](#errorcode)
 - [Examples](#examples)
-  - [Success Response](#success-response)
-  - [Non-Validation Error](#non-validation-error)
-  - [Validation Error with Multiple Issues](#validation-error-with-multiple-issues)
-  - [Server-Side Helper](#server-side-helper)
-  - [Client-Side Type Narrowing](#client-side-type-narrowing)
+  - [TypeScript Examples](#typescript-examples)
+  - [Go Examples](#go-examples)
 - [Conventions & Guidelines](#conventions--guidelines)
   - [TraceId and Timestamp](#traceid-and-timestamp)
   - [HTTP Status Code Mapping](#http-status-code-mapping)
   - [Backward Compatibility](#backward-compatibility)
 - [Installation & Usage](#installation--usage)
+  - [TypeScript Installation](#typescript-installation)
+  - [Go Installation](#go-installation)
 - [License](#license)
 
 ## Overview
 
-This library defines a standard shape for API responses that cleanly separates success and error cases using TypeScript's discriminated unions. Every response is either a success with `data` or an error with `error`, but never both.
+This library defines a standard shape for API responses that cleanly separates success and error cases. Every response is either a success with `data` or an error with `error`, but never both.
+
+Available in both **TypeScript** (with discriminated unions) and **Go** (with generics and interfaces).
 
 ## The Problem
 
@@ -41,7 +45,9 @@ APIs often return inconsistent error shapes:
 
 ## The Solution
 
-**ApiResponse** provides a single, predictable contract:
+**ApiResponse** provides a single, predictable contract.
+
+### TypeScript
 
 ```typescript
 type ApiResponse<T> = 
@@ -49,11 +55,30 @@ type ApiResponse<T> =
   | { data?: never; error: ApiError } // Error case
 ```
 
-This discriminated union ensures:
-- Type-safe handling with TypeScript's control flow analysis
+### Go
+
+```go
+type ApiResponse[T any] struct {
+    Data  *T       `json:"data,omitempty"`
+    Error ApiError `json:"error,omitempty"`
+}
+```
+
+This ensures:
+- Type-safe handling with language-specific type systems
 - Clear separation between success and error states
 - Consistent error structure across all endpoints
 - Detailed validation errors with field-level issues
+
+## Language Support
+
+### TypeScript
+
+The TypeScript implementation uses discriminated unions for compile-time type safety. See the [TypeScript Examples](#typescript-examples) section for usage.
+
+### Go
+
+The Go implementation uses generics (Go 1.18+) and interfaces. The `ApiError` interface is implemented by both `ValidationError` and `NonValidationError`. See the [Go Examples](#go-examples) section for usage.
 
 ## Type Definitions
 
@@ -205,11 +230,13 @@ enum ErrorCode {
 }
 ```
 
-See `error-code.enum.ts` for the complete list.
+See `error-code.enum.ts` (TypeScript) or `error_code.go` (Go) for the complete list.
 
 ## Examples
 
-### Success Response
+### TypeScript Examples
+
+#### Success Response
 
 ```typescript
 const response: ApiResponse<{ userId: string; email: string }> = {
@@ -220,7 +247,7 @@ const response: ApiResponse<{ userId: string; email: string }> = {
 };
 ```
 
-### Non-Validation Error
+#### Non-Validation Error
 
 ```typescript
 const response: ApiResponse<never> = {
@@ -234,7 +261,7 @@ const response: ApiResponse<never> = {
 };
 ```
 
-### Validation Error with Multiple Issues
+#### Validation Error with Multiple Issues
 
 ```typescript
 const response: ApiResponse<never> = {
@@ -266,7 +293,7 @@ const response: ApiResponse<never> = {
 };
 ```
 
-### Server-Side Helper
+#### Server-Side Helper
 
 Here's a minimal TypeScript helper for building responses:
 
@@ -334,7 +361,7 @@ const validationFailure = validationError([
 ]);
 ```
 
-### Client-Side Type Narrowing
+#### Client-Side Type Narrowing
 
 Use type guards to safely handle success vs. error cases:
 
@@ -383,6 +410,199 @@ if (response.data) {
 }
 ```
 
+### Go Examples
+
+#### Success Response
+
+```go
+package main
+
+import (
+    "encoding/json"
+    "fmt"
+    apierror "github.com/rbalet/api-error-response"
+)
+
+type User struct {
+    UserID string `json:"userId"`
+    Email  string `json:"email"`
+}
+
+func main() {
+    user := User{
+        UserID: "usr_1234567890",
+        Email:  "user@example.com",
+    }
+    response := apierror.NewSuccessResponse(user)
+    
+    jsonData, _ := json.MarshalIndent(response, "", "  ")
+    fmt.Println(string(jsonData))
+}
+```
+
+#### Non-Validation Error
+
+```go
+package main
+
+import (
+    "encoding/json"
+    "fmt"
+    apierror "github.com/rbalet/api-error-response"
+)
+
+func main() {
+    authError := apierror.NewAuthError(
+        apierror.AuthUnauthorized,
+        "Invalid or expired authentication token",
+        "trace-abc123",
+    )
+    
+    response := apierror.NewErrorResponse[interface{}](authError)
+    
+    jsonData, _ := json.MarshalIndent(response, "", "  ")
+    fmt.Println(string(jsonData))
+}
+```
+
+#### Validation Error with Multiple Issues
+
+```go
+package main
+
+import (
+    "encoding/json"
+    "fmt"
+    apierror "github.com/rbalet/api-error-response"
+)
+
+func main() {
+    emailMsg := "Email is required"
+    passwordMsg := "Password must be at least 8 characters"
+    phoneMsg := "Phone number format is invalid"
+    
+    emailCode := apierror.ValidationFieldRequired
+    passwordCode := apierror.ValidationFieldTooShort
+    phoneCode := apierror.ValidationFieldInvalidFormat
+    
+    issues := []apierror.ValidationIssue{
+        {
+            Code:    &emailCode,
+            Path:    []interface{}{"user", "email"},
+            Message: &emailMsg,
+        },
+        {
+            Code:    &passwordCode,
+            Path:    []interface{}{"user", "password"},
+            Message: &passwordMsg,
+            Meta: map[string]interface{}{
+                "min":    8,
+                "actual": 5,
+            },
+        },
+        {
+            Code:    &phoneCode,
+            Path:    []interface{}{"user", "phoneNumber"},
+            Message: &phoneMsg,
+        },
+    }
+    
+    validationError := apierror.NewValidationError(
+        "Request validation failed",
+        issues,
+        "trace-def456",
+    )
+    response := apierror.NewErrorResponse[interface{}](validationError)
+    
+    jsonData, _ := json.MarshalIndent(response, "", "  ")
+    fmt.Println(string(jsonData))
+}
+```
+
+#### Type Checking in Go
+
+```go
+package main
+
+import (
+    "fmt"
+    apierror "github.com/rbalet/api-error-response"
+)
+
+type User struct {
+    UserID string `json:"userId"`
+    Name   string `json:"name"`
+}
+
+func main() {
+    user := User{UserID: "123", Name: "Alice"}
+    response := apierror.NewSuccessResponse(user)
+    
+    if response.IsSuccess() {
+        fmt.Printf("Success! User ID: %s\n", response.Data.UserID)
+    } else if response.IsError() {
+        fmt.Printf("Error: %s\n", *response.Error.GetMessage())
+    }
+    
+    // Check if error is a validation error
+    if response.IsError() && response.Error.IsValidationError() {
+        if validationErr, ok := response.Error.(*apierror.ValidationError); ok {
+            for _, issue := range validationErr.Issues {
+                fmt.Printf("Field error: %s\n", *issue.Message)
+            }
+        }
+    }
+}
+```
+
+#### Helper Functions
+
+The Go package includes helper functions for creating common error types:
+
+```go
+package main
+
+import apierror "github.com/rbalet/api-error-response"
+
+func main() {
+    // Authentication error
+    authErr := apierror.NewAuthError(
+        apierror.AuthUnauthorized,
+        "Token expired",
+        "trace-001",
+    )
+    
+    // Domain error
+    domainErr := apierror.NewDomainError(
+        apierror.UserNotFound,
+        "User not found",
+        "trace-002",
+    )
+    
+    // Not found error
+    notFoundErr := apierror.NewNotFoundError(
+        "Resource not found",
+        "trace-003",
+    )
+    
+    // System error
+    systemErr := apierror.NewSystemError(
+        apierror.SystemDatabaseError,
+        "Database connection failed",
+        "trace-004",
+    )
+    
+    // Rate limit error
+    rateLimitErr := apierror.NewRateLimitError(
+        "Too many requests",
+        "trace-005",
+    )
+    
+    // Use these errors in responses
+    response := apierror.NewErrorResponse[interface{}](authErr)
+}
+```
+
 ## Conventions & Guidelines
 
 ### TraceId and Timestamp
@@ -424,9 +644,11 @@ Match HTTP status codes to error types for RESTful conventions:
 
 ## Installation & Usage
 
+### TypeScript Installation
+
 Since this library doesn't have an npm package yet, you can consume it in two ways:
 
-### Option 1: Copy Types Directly
+#### Option 1: Copy Types Directly
 
 Copy the type definition files into your project:
 
@@ -443,7 +665,7 @@ Then import:
 import { ApiResponse, ApiError, ErrorCode } from './types/api-response';
 ```
 
-### Option 2: Git Dependency
+#### Option 2: Git Dependency
 
 Install directly from the GitHub repository:
 
@@ -460,6 +682,36 @@ import { ApiResponse, ApiError, ErrorCode } from 'api-error-response';
 ```
 
 **Note:** If importing from the Git repo, you may need to configure your TypeScript paths or bundler to resolve the `.d.ts` and `.ts` files correctly.
+
+### Go Installation
+
+#### Option 1: Go Module (Recommended)
+
+Install using Go modules:
+
+```bash
+go get github.com/rbalet/api-error-response
+```
+
+Then import in your code:
+
+```go
+import apierror "github.com/rbalet/api-error-response"
+```
+
+#### Option 2: Copy Go Files
+
+Copy the Go files into your project:
+
+```bash
+# Copy files to your project
+cp error_code.go your-project/pkg/apierror/
+cp api_error.go your-project/pkg/apierror/
+cp api_response.go your-project/pkg/apierror/
+cp helpers.go your-project/pkg/apierror/
+```
+
+**Note:** Requires Go 1.18 or later (for generics support).
 
 ## License
 
