@@ -711,7 +711,7 @@ cp api_response.go your-project/pkg/apierror/
 cp helpers.go your-project/pkg/apierror/
 ```
 
-**Note:** Requires Go 1.18 or later (for generics support).
+**Note:** Requires Go 1.22 or later (for generics support).
 
 ## License
 
